@@ -1,35 +1,36 @@
-import OracleDB from 'oracledb';
+import OracleDB from "oracledb";
 import {User} from '../../models/User';
-import { deleteOne, getAll, getById, insertOne, updateOne } from './oracle';
+import {exec, query, queryOne, StringMap} from './oracle';
 
-export class OracleUserService {
-  private readonly id = 'id';
-  private readonly tableName = 'users';
-  private readonly client:OracleDB.Connection;
-  constructor(db: OracleDB.Connection) {
-    this.client = db;
+export const dateMap:StringMap = {
+  ID:'id',
+  USERNAME:'username',
+  EMAIL:'email',
+  PHONE:'phone',
+  DATEOFBIRTH:'dateOfBirth'
+}
+export class SqlUserService {
+  constructor(private client: OracleDB.Connection) {
   }
-  all(): Promise<User[]>{
-    return getAll(this.client,this.tableName);
-  } 
-  load(id: string): Promise<User>{
-    return getById(this.client,this.tableName,this.id,id);
+  all(): Promise<User[]> {
+    return query<User>(this.client, 'SELECT * FROM users ORDER BY id ASC', undefined, dateMap);
   }
-  insert(user: User): Promise<number>{
+  load(id: string): Promise<User> {
+    return queryOne(this.client, 'SELECT * FROM users WHERE id = :0', [id], dateMap);
+  }
+  insert(user: User): Promise<number> {
     user.dateOfBirth = new Date(user.dateOfBirth);
-    return insertOne<User>(this.client,this.tableName,user);
+    return exec(this.client, `INSERT INTO users (id, username, email, phone, dateofbirth) VALUES (:0, :1, :2, :3, :4)`,
+     [user.id, user.username, user.email, user.phone, user.dateOfBirth]);
   }
-  update(user: User): Promise<number>{
-    user.dateOfBirth = new Date(user.dateOfBirth);
-    return updateOne<User>(this.client,this.tableName,user,this.id);
-  }
-  patch(user: User): Promise<number>{
+  update(user: User): Promise<number> {
     if(user.dateOfBirth){
       user.dateOfBirth = new Date(user.dateOfBirth);
     }
-    return updateOne<User>(this.client,this.tableName,user,this.id);
+    return exec(this.client, `UPDATE users SET username=:1, email =:2, phone=:3, dateofbirth=:4 WHERE id = :0`,
+    [ user.username, user.email, user.phone, user.dateOfBirth,user.id]);
   }
-  delete(id: string): Promise<number>{
-    return deleteOne(this.client,this.tableName,this.id,id);
+  delete(id: string): Promise<number> {
+    return exec(this.client, `DELETE FROM users WHERE id = :0`, [id]);
   }
 }

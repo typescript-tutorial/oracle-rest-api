@@ -8,9 +8,8 @@ export function route(app: Application, ctx: ApplicationContext): void {
   app.get('/health', health.check);
 
   app.get('/users', user.all);
-  app.get('/user', user.load);
+  app.get('/users/:id', user.load);
   app.post('/users', user.insert);
-  app.put('/users', user.update);
-  app.patch('/users', user.patch);
-  app.delete('/users', user.delete);
+  app.put('/users/:id', user.update);
+  app.delete('/users/:id', user.delete);
 }

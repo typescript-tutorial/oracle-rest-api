@@ -3,10 +3,10 @@ import { HealthController } from "./services/oracle/HealthController";
 import { OracleChecker } from "./services/oracle/OracleChecker";
 import {ApplicationContext} from './context';
 import {UserController} from './controllers/UserController';
-import {OracleUserService} from './services/oracle/OracleUserService';
+import {SqlUserService} from './services/oracle/oracleUserService';
 
 export function createContext(db: OracleDB.Connection): ApplicationContext {
-    const userService = new OracleUserService(db);
+    const userService = new SqlUserService(db);
     const oracleChecker = new OracleChecker(db)
     const healthController = new HealthController([oracleChecker]);
     const userController = new UserController(userService);
