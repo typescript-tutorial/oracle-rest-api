@@ -1,6 +1,6 @@
-import OracleDB from "oracledb";
+import OracleDB,{STRING,DB_TYPE_TIMESTAMP, DATE} from "oracledb";
 import {User} from '../../models/User';
-import {exec, query, queryOne, StringMap} from './oracle';
+import {exec, execute, executeTran, query, queryOne, Statement, StringMap} from './oracle';
 
 export const dateMap:StringMap = {
   ID:'id',
@@ -22,6 +22,21 @@ export class SqlUserService {
     user.dateOfBirth = new Date(user.dateOfBirth);
     return exec(this.client, `INSERT INTO users (id, username, email, phone, dateofbirth) VALUES (:0, :1, :2, :3, :4)`,
      [user.id, user.username, user.email, user.phone, user.dateOfBirth]);
+  }
+  insertMany(users:User[]): Promise<number>{
+    users.forEach(item => {
+      item.dateOfBirth = new Date(item.dateOfBirth);
+    })
+    return execute(this.client,`INSERT INTO users (id, username, email, phone, dateofbirth) VALUES (:id, :username, :email, :phone, :dateofbirth)`,users)
+  }
+  insertArray(users:User[]): Promise<number>{
+    let statement = users.map(item => {
+      return {
+        query:`INSERT INTO users (id, username, email, phone, dateofbirth) VALUES (:0, :1, :2, :3, :4)`,
+        args:[item.id, item.username, item.email, item.phone, new Date(item.dateOfBirth)]
+      }
+    })
+    return executeTran(this.client,statement)
   }
   update(user: User): Promise<number> {
     if(user.dateOfBirth){

@@ -1,5 +1,4 @@
-import OracleDB, { getConnection} from "oracledb";
-
+import OracleDB, { getConnection, autoCommit} from "oracledb";
 export interface StringMap {
   [key: string]: string;
 }
@@ -9,7 +8,7 @@ export interface Statement {
 }
 export interface Manager {
   exec(sql: string, args?: any[]): Promise<number>;
-  execute(statements: Statement): Promise<number>;
+  execute(statements: [],query:string): Promise<number>;
   query<T>(sql: string, args?: any[], m?: StringMap, fields?: string[]): Promise<T[]>;
   queryOne<T>(sql: string, args?: any[], m?: StringMap, fields?: string[]): Promise<T>;
   executeScalar<T>(sql: string, args?: any[]): Promise<T>;
@@ -27,8 +26,8 @@ export class OracleManager implements Manager {
   exec(sql: string, args?: any[]): Promise<number> {
     return exec(this.client, sql, args);
   }
-  execute(statements: Statement): Promise<number> {
-    return execute(this.client, statements);
+  execute(statements: any[],query:string): Promise<number> {
+    return execute(this.client,query, statements);
   }
   query<T>(sql: string, args?: any[], m?: StringMap, fields?: string[]): Promise<T[]> {
     return query(this.client, sql, args, m, fields);
@@ -71,16 +70,34 @@ export function exec(client: OracleDB.Connection, sql: string, args?: any[]): Pr
   });
 }
 
-export async function execute(client: OracleDB.Connection, statements: Statement): Promise<number> {
+export async function execute(client: OracleDB.Connection,query:string, statements: any[]): Promise<number> {
   return new Promise<number>((resolve, reject) => {
-    return client.executeMany(statements.query, statements.args, { autoCommit: true }, (err, results) => {
+    return client.executeMany(query, statements, {autoCommit: true} , (err, results) => {
       if (err) {
+        client.rollback();
         return reject(err);
       } else {
         return resolve(results.rowsAffected);
       }
     });
   });
+}
+
+export async function executeTran(client: OracleDB.Connection,statements:Statement[]) {
+  try {
+    const arrPromise = statements.map((item) => client.execute(item.query, item.args ? item.args : [], {autoCommit:false}));
+    let c = 0;
+    await Promise.all(arrPromise).then(results => {
+      for (const obj of results) {
+        c += obj.rowsAffected;
+      }
+    });
+    await client.commit();
+    return c;
+  } catch (e) {
+    await client.rollback();
+    throw e;
+  } 
 }
 
 export function query<T>(client: OracleDB.Connection, sql: string, args?: any[], m?: StringMap, fields?: string[]): Promise<T[]> {
