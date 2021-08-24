@@ -11,7 +11,6 @@ export function route(app: Application, ctx: ApplicationContext): void {
   app.get('/users/:id', user.load);
   app.post('/users', user.insert);
   app.post('/userss', user.insertMany);
-  app.post('/usersss', user.insertArray);
   app.put('/users/:id', user.update);
   app.delete('/users/:id', user.delete);
 }

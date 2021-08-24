@@ -1,11 +1,11 @@
-import OracleDB from "oracledb";
+import OracleDB, { Pool } from "oracledb";
 import { HealthController } from "./services/oracle/HealthController";
 import { OracleChecker } from "./services/oracle/OracleChecker";
 import {ApplicationContext} from './context';
 import {UserController} from './controllers/UserController';
 import {SqlUserService} from './services/oracle/oracleUserService';
 
-export function createContext(db: OracleDB.Connection): ApplicationContext {
+export function createContext(db: Pool): ApplicationContext {
     const userService = new SqlUserService(db);
     const oracleChecker = new OracleChecker(db)
     const healthController = new HealthController([oracleChecker]);

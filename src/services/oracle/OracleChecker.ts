@@ -1,4 +1,4 @@
-import OracleDB from 'oracledb';
+import OracleDB, { Connection, Pool } from 'oracledb';
 
 export interface AnyMap {
   [key: string]: any;
@@ -10,7 +10,9 @@ export interface HealthChecker {
 }
 
 export class OracleChecker implements HealthChecker {
-  constructor(private client: OracleDB.Connection, private service?: string, private timeout?: number) {
+  private client: Connection;
+  constructor(private pool: Pool, private service?: string, private timeout?: number) {
+    pool.getConnection().then(c => {this.client = c})
     if (!this.timeout) {
       this.timeout = 4200;
     }
