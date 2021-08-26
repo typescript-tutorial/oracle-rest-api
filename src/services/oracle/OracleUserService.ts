@@ -11,11 +11,7 @@ export const dateMap:StringMap = {
   DATEOFBIRTH:'dateOfBirth'
 }
 export class SqlUserService {
-  private conn : Connection
-  constructor(private pool: Pool) {
-    pool.getConnection().then(c => {
-      this.conn = c
-    })
+  constructor(private conn: Connection) {
   }
   all(): Promise<User[]> {
     return query<User>(this.conn, 'SELECT * FROM users ORDER BY id ASC', undefined, dateMap);
@@ -42,6 +38,9 @@ export class SqlUserService {
     users.forEach(item => {
       item.dateOfBirth = new Date(item.dateOfBirth);
     })
-    return exec(this.conn,`INSERT INTO users (id, username, email, phone, dateofbirth) VALUES (:id, :username, :email, :phone, :dateofbirth)`,users)
+    const statements = users.map((item) => {
+      return { query: `INSERT INTO users (id, username, email, phone, dateofbirth) VALUES (:0, :1, :2, :3, :4)`, params: [item.id, item.username, item.email, item.phone, item.dateOfBirth] };
+    });
+    return execBatch(this.conn,statements,true)
   }
 }

@@ -10,7 +10,7 @@ export function route(app: Application, ctx: ApplicationContext): void {
   app.get('/users', user.all);
   app.get('/users/:id', user.load);
   app.post('/users', user.insert);
-  app.post('/userss', user.insertMany);
+  app.post('/users/list', user.insertMany);
   app.put('/users/:id', user.update);
   app.delete('/users/:id', user.delete);
 }

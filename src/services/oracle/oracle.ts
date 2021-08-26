@@ -1,10 +1,25 @@
-import OracleDB, { getConnection, autoCommit, Pool, Connection} from "oracledb";
+import { User } from "models/User";
+import OracleDB, { Pool, Connection, getConnection} from "oracledb";
 import { buildToSave, buildToSaveBatch } from "./build";
 import { Attribute, Attributes, Manager, Statement, StringMap } from "./metadata";
+OracleDB.autoCommit = true;
+
+// export async function connectToDb(): Promise<Connection> {
+//   try {
+//     const connection = await getConnection({
+//       user: 'c##vinasupport',
+//       password: 'vinasupport', 
+//       connectString: '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(Host=localhost)(Port=1521))(CONNECT_DATA=(SID=ORCL)))'     
+//     });
+//     console.log('connect oracle success!');
+//     return connection;
+//   } catch (err) {
+//     console.log(err);
+//   }
+// }
+
 export class OracleManager implements Manager {
-  private conn:Connection;
-  constructor(public pool: Pool) {
-    pool.getConnection().then(c => {this.conn = c})
+  constructor(public conn: Connection) {
     this.exec = this.exec.bind(this);
     this.execBatch = this.execBatch.bind(this);
     this.query = this.query.bind(this);
@@ -39,54 +54,46 @@ export async function execBatch(conn: Connection, statements: Statement[], first
   } else if (statements.length === 1) {
     return exec(conn, statements[0].query, statements[0].params);
   }
-  if(firstSuccess){
-    try {
-      const result0  = await conn.execute(statements[0].query, statements[0].params)
+  try {
+    if(firstSuccess){
+      const result0  = await conn.execute(statements[0].query, statements[0].params,{autoCommit:false})
       if(result0 && result0.rowsAffected !== 0){
         let listStatements = statements.slice(1);
         const arrPromise = listStatements.map((item) => {
           return conn.execute(item.query, item.params ? item.params : [],{autoCommit:false});
         });
-        await Promise.all(arrPromise).then(results => {
-          for (const obj of results) {
-            c += obj.rowsAffected;
-          }
-        });
-        c += result0.rowsAffected;
-        await conn.commit();
-        return c;;
-      }
-    } catch (e) {
-      await conn.rollback();
-      throw e;
-    } finally {
-      conn.release();
-    }
-  }
-  else {
-    try {
-      const arrPromise = statements.map((item) => conn.execute(item.query, item.params ? item.params : [], {autoCommit:false}));
-      let c = 0;
-      await Promise.all(arrPromise).then(results => {
+        const results = await Promise.all(arrPromise)
         for (const obj of results) {
           c += obj.rowsAffected;
         }
-      });
+        c += result0.rowsAffected;
+        await conn.commit();
+        return c;
+      }
+    }
+    else {
+      const arrPromise = statements.map((item) => conn.execute<User>(item.query, item.params ? item.params : [],{autoCommit:false}));
+      let c = 0;
+      const results = await Promise.all(arrPromise)
+      for (const obj of results) {
+        c += obj.rowsAffected;
+      }
       await conn.commit();
       return c;
-    } catch (e) {
-      await conn.rollback();
-      throw e;
-    } finally {
-      conn.release();
-    }
+    } 
+  }catch (e) {
+    await conn.rollback();
+    throw e;
+  }
+  finally {
+    conn.release();
   }
 }
 
 export function exec(conn: Connection, sql: string, args?: any[]): Promise<number> {
   const p = toArray(args);
   return new Promise<number>((resolve, reject) => {
-    return conn.execute(sql, p, { autoCommit: true }, (err, results) => {
+    return conn.execute(sql, p, (err, results) => {
       if (err) {
         return reject(err);
       } else {
@@ -99,12 +106,12 @@ export function exec(conn: Connection, sql: string, args?: any[]): Promise<numbe
 export function query<T>(conn: Connection, sql: string, args?: any[], m?: StringMap, bools?: Attribute[]): Promise<T[]> {
   const p = toArray(args);
   return new Promise<T[]>((resolve, reject) => {
-    return conn.execute<T>(sql, p, { autoCommit: true }, (err, results) => {
+    return conn.execute<T>(sql, p ,(err, results) => {
       if (err) {
         return reject(err);
       } else {
         const arrayResult = results.rows.map(item => {
-          return mapData<T>(results.metaData,item)
+          return formatData<T>(results.metaData,item)
         });
         return resolve(handleResults(arrayResult, m, bools));
       }
@@ -300,7 +307,8 @@ export function isEmpty(s: string): boolean {
   return !(s && s.length > 0);
 }
 
-export function mapData<T>(nameColumn:any,data:any, m?: StringMap): T {
+// hàm format lại data trả về 
+export function formatData<T>(nameColumn:any,data:any, m?: StringMap): T {
   let result:any = {};
   nameColumn.forEach((item,index) => {
     let key = item.name;

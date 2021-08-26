@@ -10,9 +10,7 @@ export interface HealthChecker {
 }
 
 export class OracleChecker implements HealthChecker {
-  private client: Connection;
-  constructor(private pool: Pool, private service?: string, private timeout?: number) {
-    pool.getConnection().then(c => {this.client = c})
+  constructor(private client: Connection, private service?: string, private timeout?: number) {
     if (!this.timeout) {
       this.timeout = 4200;
     }
