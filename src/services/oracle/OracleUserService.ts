@@ -21,7 +21,14 @@ export class SqlUserService {
   }
   insert(user: User): Promise<number> {
     user.dateOfBirth = new Date(user.dateOfBirth);
-    return exec(this.conn, `INSERT INTO users (id, username, email, phone, dateofbirth) VALUES (:0, :1, :2, :3, :4)`,
+    const str = `
+        MERGE INTO users USING dual ON ( id = :0 )
+        WHEN MATCHED THEN UPDATE SET username = :1, email = :2, phone = :3, dateofbirth = :4
+        WHEN NOT MATCHED THEN INSERT 
+            VALUES (:0, :1, :2, :3, :4)
+    `
+    // const str = `INSERT INTO users (id, username, email, phone, dateofbirth) VALUES (:0, :1, :2, :3, :4) ON DUPLICATE KEY UPDATE username = VALUES(:1), email = VALUES(:2), phone = VALUES(:3), dateofbirth = VALUES(:4) WHERE id = :0;`
+    return exec(this.conn, str,
      [user.id, user.username, user.email, user.phone, user.dateOfBirth]);
   }
   update(user: User): Promise<number> {

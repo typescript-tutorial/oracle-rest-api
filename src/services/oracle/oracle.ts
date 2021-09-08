@@ -95,6 +95,7 @@ export function exec(conn: Connection, sql: string, args?: any[]): Promise<numbe
   return new Promise<number>((resolve, reject) => {
     return conn.execute(sql, p, (err, results) => {
       if (err) {
+        console.log(err);
         return reject(err);
       } else {
         return resolve(results.rowsAffected);
