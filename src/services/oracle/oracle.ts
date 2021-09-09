@@ -1,22 +1,13 @@
-import { User } from "models/User";
-import OracleDB, { Pool, Connection, getConnection} from "oracledb";
-import { buildToSave, buildToSaveBatch } from "./build";
-import { Attribute, Attributes, Manager, Statement, StringMap } from "./metadata";
+import OracleDB, { Connection, getConnection, Pool} from 'oracledb';
+import { buildToSave, buildToSaveBatch } from './build';
+import { Attribute, Attributes, Manager, Statement, StringMap } from './metadata';
+
 OracleDB.autoCommit = true;
 
-// export async function connectToDb(): Promise<Connection> {
-//   try {
-//     const connection = await getConnection({
-//       user: 'c##vinasupport',
-//       password: 'vinasupport', 
-//       connectString: '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(Host=localhost)(Port=1521))(CONNECT_DATA=(SID=ORCL)))'     
-//     });
-//     console.log('connect oracle success!');
-//     return connection;
-//   } catch (err) {
-//     console.log(err);
-//   }
-// }
+// tslint:disable-next-line:class-name
+export class resource {
+  static string?: boolean;
+}
 
 export class OracleManager implements Manager {
   constructor(public conn: Connection) {
@@ -24,45 +15,51 @@ export class OracleManager implements Manager {
     this.execBatch = this.execBatch.bind(this);
     this.query = this.query.bind(this);
     this.queryOne = this.queryOne.bind(this);
-    this.executeScalar = this.executeScalar.bind(this);
+    this.execScalar = this.execScalar.bind(this);
     this.count = this.count.bind(this);
   }
-  exec(sql: string, args?: any[]): Promise<number> {
+  exec(sql: string, args?: any[], ctx?: any): Promise<number> {
+    const p = (ctx ? ctx : this.conn);
     return exec(this.conn, sql, args);
   }
-  execBatch(statements: Statement[], firstSuccess?: boolean): Promise<number> {
-    return execBatch(this.conn, statements, firstSuccess);
+  execBatch(statements: Statement[], firstSuccess?: boolean, ctx?: any): Promise<number> {
+    const p = (ctx ? ctx : this.conn);
+    return execBatch(p, statements, firstSuccess);
   }
-  query<T>(sql: string, args?: any[], m?: StringMap, bools?: Attribute[]): Promise<T[]> {
-    return query(this.conn, sql, args, m, bools);
+  query<T>(sql: string, args?: any[], m?: StringMap, bools?: Attribute[], ctx?: any): Promise<T[]> {
+    const p = (ctx ? ctx : this.conn);
+    return query(p, sql, args, m, bools);
   }
-  queryOne<T>(sql: string, args?: any[], m?: StringMap, bools?: Attribute[]): Promise<T> {
-    return queryOne(this.conn, sql, args, m, bools);
+  queryOne<T>(sql: string, args?: any[], m?: StringMap, bools?: Attribute[], ctx?: any): Promise<T> {
+    const p = (ctx ? ctx : this.conn);
+    return queryOne(p, sql, args, m, bools);
   }
-  executeScalar<T>(sql: string, args?: any[]): Promise<T> {
-    return executeScalar<T>(this.conn, sql, args);
+  execScalar<T>(sql: string, args?: any[], ctx?: any): Promise<T> {
+    const p = (ctx ? ctx : this.conn);
+    return execScalar<T>(p, sql, args);
   }
-  count(sql: string, args?: any[]): Promise<number> {
-    return count(this.conn, sql, args);
+  count(sql: string, args?: any[], ctx?: any): Promise<number> {
+    const p = (ctx ? ctx : this.conn);
+    return count(p, sql, args);
   }
 }
 
 export async function execBatch(conn: Connection, statements: Statement[], firstSuccess?: boolean): Promise<number> {
-  let c = 0;
   if (!statements || statements.length === 0) {
     return Promise.resolve(0);
   } else if (statements.length === 1) {
     return exec(conn, statements[0].query, statements[0].params);
   }
+  let c = 0;
   try {
-    if(firstSuccess){
-      const result0  = await conn.execute(statements[0].query, statements[0].params,{autoCommit:false})
-      if(result0 && result0.rowsAffected !== 0){
-        let listStatements = statements.slice(1);
-        const arrPromise = listStatements.map((item) => {
-          return conn.execute(item.query, item.params ? item.params : [],{autoCommit:false});
+    if (firstSuccess) {
+      const result0  = await conn.execute(statements[0].query, statements[0].params, {autoCommit: false});
+      if (result0 && result0.rowsAffected !== 0) {
+        const subs = statements.slice(1);
+        const arrPromise = subs.map((item) => {
+          return conn.execute(item.query, item.params ? item.params : [], {autoCommit: false});
         });
-        const results = await Promise.all(arrPromise)
+        const results = await Promise.all(arrPromise);
         for (const obj of results) {
           c += obj.rowsAffected;
         }
@@ -70,18 +67,16 @@ export async function execBatch(conn: Connection, statements: Statement[], first
         await conn.commit();
         return c;
       }
-    }
-    else {
-      const arrPromise = statements.map((item) => conn.execute<User>(item.query, item.params ? item.params : [],{autoCommit:false}));
-      let c = 0;
-      const results = await Promise.all(arrPromise)
+    } else {
+      const arrPromise = statements.map((item) => conn.execute(item.query, item.params ? item.params : [], {autoCommit: false}));
+      const results = await Promise.all(arrPromise);
       for (const obj of results) {
         c += obj.rowsAffected;
       }
       await conn.commit();
       return c;
-    } 
-  }catch (e) {
+    }
+  } catch (e) {
     await conn.rollback();
     throw e;
   }
@@ -107,12 +102,12 @@ export function exec(conn: Connection, sql: string, args?: any[]): Promise<numbe
 export function query<T>(conn: Connection, sql: string, args?: any[], m?: StringMap, bools?: Attribute[]): Promise<T[]> {
   const p = toArray(args);
   return new Promise<T[]>((resolve, reject) => {
-    return conn.execute<T>(sql, p ,(err, results) => {
+    return conn.execute<T>(sql, p , (err, results) => {
       if (err) {
         return reject(err);
       } else {
         const arrayResult = results.rows.map(item => {
-          return formatData<T>(results.metaData,item)
+          return formatData<T>(results.metaData, item);
         });
         return resolve(handleResults(arrayResult, m, bools));
       }
@@ -126,7 +121,7 @@ export function queryOne<T>(conn: Connection, sql: string, args?: any[], m?: Str
   });
 }
 
-export function executeScalar<T>(conn: Connection, sql: string, args?: any[]): Promise<T> {
+export function execScalar<T>(conn: Connection, sql: string, args?: any[]): Promise<T> {
   return queryOne<T>(conn, sql, args).then(r => {
     if (!r) {
       return null;
@@ -138,7 +133,7 @@ export function executeScalar<T>(conn: Connection, sql: string, args?: any[]): P
 }
 
 export function count(conn: Connection, sql: string, args?: any[]): Promise<number> {
-  return executeScalar<number>(conn, sql, args);
+  return execScalar<number>(conn, sql, args);
 }
 
 export function save<T>(conn: Connection|((sql: string, args?: any[]) => Promise<number>), obj: T, table: string, attrs: Attributes, ver?: string, buildParam?: (i: number) => string, i?: number): Promise<number> {
@@ -159,23 +154,35 @@ export function saveBatch<T>(conn: Connection|((statements: Statement[]) => Prom
   }
 }
 
-export function toArray<T>(arr: T[]): T[] {
+export function toArray(arr: any[]): any[] {
   if (!arr || arr.length === 0) {
     return [];
   }
-  const p: T[] = [];
+  const p: any[] = [];
   const l = arr.length;
   for (let i = 0; i < l; i++) {
-    if (arr[i] === undefined) {
+    if (arr[i] === undefined || arr[i] == null) {
       p.push(null);
     } else {
-      p.push(arr[i]);
+      if (typeof arr[i] === 'object') {
+        if (arr[i] instanceof Date) {
+          p.push(arr[i]);
+        } else {
+          if (resource.string) {
+            const s: string = JSON.stringify(arr[i]);
+            p.push(s);
+          } else {
+            p.push(arr[i]);
+          }
+        }
+      } else {
+        p.push(arr[i]);
+      }
     }
   }
   return p;
 }
-
-export function handleResults<T>(r: T[], m?: StringMap, bools?: Attribute[]) {
+export function handleResults<T>(r: T[], m?: StringMap, bools?: Attribute[]): T[] {
   if (m) {
     const res = mapArray(r, m);
     if (bools && bools.length > 0) {
@@ -191,29 +198,27 @@ export function handleResults<T>(r: T[], m?: StringMap, bools?: Attribute[]) {
     }
   }
 }
-
 export function handleBool<T>(objs: T[], bools: Attribute[]) {
   if (!bools || bools.length === 0 || !objs) {
     return objs;
   }
   for (const obj of objs) {
     for (const field of bools) {
-      const value = obj[field.name];
-      if (value != null && value !== undefined) {
+      const v = obj[field.name];
+      if (typeof v !== 'boolean' && v != null && v !== undefined) {
         const b = field.true;
         if (b == null || b === undefined) {
           // tslint:disable-next-line:triple-equals
-          obj[field.name] = ('true' == value || '1' == value || 'T' == value || 'Y' == value);
+          obj[field.name] = ('1' == v || 'T' == v || 'Y' == v || 'true' == v);
         } else {
           // tslint:disable-next-line:triple-equals
-          obj[field.name] = (value == b ? true : false);
+          obj[field.name] = (v == b ? true : false);
         }
       }
     }
   }
   return objs;
 }
-
 export function map<T>(obj: T, m?: StringMap): any {
   if (!m) {
     return obj;
@@ -233,7 +238,6 @@ export function map<T>(obj: T, m?: StringMap): any {
   }
   return obj2;
 }
-
 export function mapArray<T>(results: T[], m?: StringMap): T[] {
   if (!m) {
     return results;
@@ -259,7 +263,6 @@ export function mapArray<T>(results: T[], m?: StringMap): T[] {
   }
   return objs;
 }
-
 export function getFields(fields: string[], all?: string[]): string[] {
   if (!fields || fields.length === 0) {
     return undefined;
@@ -280,7 +283,6 @@ export function getFields(fields: string[], all?: string[]): string[] {
     return fields;
   }
 }
-
 export function buildFields(fields: string[], all?: string[]): string {
   const s = getFields(fields, all);
   if (!s || s.length === 0) {
@@ -289,7 +291,6 @@ export function buildFields(fields: string[], all?: string[]): string {
     return s.join(',');
   }
 }
-
 export function getMapField(name: string, mp?: StringMap): string {
   if (!mp) {
     return name;
@@ -303,60 +304,34 @@ export function getMapField(name: string, mp?: StringMap): string {
   }
   return name;
 }
-
 export function isEmpty(s: string): boolean {
   return !(s && s.length > 0);
 }
 
-// hàm format lại data trả về 
-export function formatData<T>(nameColumn:any,data:any, m?: StringMap): T {
-  let result:any = {};
-  nameColumn.forEach((item,index) => {
+// format the return data
+export function formatData<T>(nameColumn: any, data: any, m?: StringMap): T {
+  const result: any = {};
+  nameColumn.forEach((item, index) => {
     let key = item.name;
     if (m) {
       key = m[item.name];
     }
     result[key] = data[index];
-  })
-  return result
+  });
+  return result;
 }
 
-// export class StringService {
-//   constructor(protected pool: Pool, public table: string, public column: string) {
-//     this.load = this.load.bind(this);
-//     this.save = this.save.bind(this);
-//   }
-//   load(key: string, max: number): Promise<string[]> {
-//     const s = `select ${this.column} from ${this.table} where ${this.column} like ? order by ${this.column} limit ${max}`;
-//     console.log(s);
-//     return query(this.pool, s, ['' + key + '%']).then(arr => {
-//       return arr.map(i => i[this.column] as string);
-//     });
-//   }
-//   save(values: string[]): Promise<number> {
-//     if (!values || values.length === 0) {
-//       return Promise.resolve(0);
-//     }
-//     const arr: string[] = [];
-//     for (let i = 1; i <= values.length; i++) {
-//       arr.push('(?)');
-//     }
-//     const s = `insert ignore into ${this.table}(${this.column})values${arr.join(',')}`;
-//     return exec(this.pool, s, values);
-//   }
-// }
-
-// export function version(attrs: Attributes): Attribute {
-//   const ks = Object.keys(attrs);
-//   for (const k of ks) {
-//     const attr = attrs[k];
-//     if (attr.version) {
-//       attr.name = k;
-//       return attr;
-//     }
-//   }
-//   return undefined;
-// }
+export function version(attrs: Attributes): Attribute {
+  const ks = Object.keys(attrs);
+  for (const k of ks) {
+    const attr = attrs[k];
+    if (attr.version) {
+      attr.name = k;
+      return attr;
+    }
+  }
+  return undefined;
+}
 // // tslint:disable-next-line:max-classes-per-file
 // export class MySQLWriter<T> {
 //   pool?: Pool;
