@@ -1,5 +1,5 @@
-import OracleDB, { Connection, getConnection, Pool} from 'oracledb';
-import { buildToSave, buildToSaveBatch } from './build';
+import OracleDB, { Connection } from 'oracledb';
+import { buildToInsertBatch, buildToSave, buildToSaveBatch } from './build';
 import { Attribute, Attributes, Manager, Statement, StringMap } from './metadata';
 
 OracleDB.autoCommit = true;
@@ -135,7 +135,14 @@ export function execScalar<T>(conn: Connection, sql: string, args?: any[]): Prom
 export function count(conn: Connection, sql: string, args?: any[]): Promise<number> {
   return execScalar<number>(conn, sql, args);
 }
-
+export function insertBatch<T>(conn: Connection|((sql: string, args?: any[]) => Promise<number>), objs: T[], table: string, attrs: Attributes, ver?: string, notSkipInvalid?: boolean, buildParam?: (i: number) => string): Promise<number> {
+  const s = buildToInsertBatch<T>(objs, table, attrs, ver, notSkipInvalid, buildParam);
+  if (typeof conn === 'function') {
+    return conn(s.query, s.params);
+  } else {
+    return exec(conn, s.query, s.params);
+  }
+}
 export function save<T>(conn: Connection|((sql: string, args?: any[]) => Promise<number>), obj: T, table: string, attrs: Attributes, ver?: string, buildParam?: (i: number) => string, i?: number): Promise<number> {
   const s = buildToSave(obj, table, attrs, ver, buildParam);
   if (typeof conn === 'function') {
@@ -332,147 +339,134 @@ export function version(attrs: Attributes): Attribute {
   }
   return undefined;
 }
-// // tslint:disable-next-line:max-classes-per-file
-// export class MySQLWriter<T> {
-//   pool?: Pool;
-//   version?: string;
-//   exec?: (sql: string, args?: any[]) => Promise<number>;
-//   map?: (v: T) => T;
-//   param?: (i: number) => string;
-//   constructor(pool: Pool|((sql: string, args?: any[]) => Promise<number>), public table: string, public attributes: Attributes, toDB?: (v: T) => T, buildParam?: (i: number) => string) {
-//     this.write = this.write.bind(this);
-//     if (typeof pool === 'function') {
-//       this.exec = pool;
-//     } else {
-//       this.pool = pool;
-//     }
-//     this.param = buildParam;
-//     this.map = toDB;
-//     const x = version(attributes);
-//     if (x) {
-//       this.version = x.name;
-//     }
-//   }
-//   write(obj: T): Promise<number> {
-//     if (!obj) {
-//       return Promise.resolve(0);
-//     }
-//     let obj2 = obj;
-//     if (this.map) {
-//       obj2 = this.map(obj);
-//     }
-//     const stmt = buildToSave(obj2, this.table, this.attributes, this.version, this.param);
-//     if (stmt) {
-//       if (this.exec) {
-//         return this.exec(stmt.query, stmt.params);
-//       } else {
-//         return exec(this.pool, stmt.query, stmt.params);
-//       }
-//     } else {
-//       return Promise.resolve(0);
-//     }
-//   }
-// }
-// // tslint:disable-next-line:max-classes-per-file
-// export class MySQLBatchWriter<T> {
-//   pool?: Pool;
-//   version?: string;
-//   execute?: (statements: Statement[]) => Promise<number>;
-//   map?: (v: T) => T;
-//   param?: (i: number) => string;
-//   constructor(pool: Pool|((statements: Statement[]) => Promise<number>), public table: string, public attributes: Attributes, toDB?: (v: T) => T, buildParam?: (i: number) => string) {
-//     this.write = this.write.bind(this);
-//     if (typeof pool === 'function') {
-//       this.execute = pool;
-//     } else {
-//       this.pool = pool;
-//     }
-//     this.param = buildParam;
-//     this.map = toDB;
-//     const x = version(attributes);
-//     if (x) {
-//       this.version = x.name;
-//     }
-//   }
-//   write(objs: T[]): Promise<number> {
-//     if (!objs || objs.length === 0) {
-//       return Promise.resolve(0);
-//     }
-//     let list = objs;
-//     if (this.map) {
-//       list = [];
-//       for (const obj of objs) {
-//         const obj2 = this.map(obj);
-//         list.push(obj2);
-//       }
-//     }
-//     const stmts = buildToSaveBatch(list, this.table, this.attributes, this.version, this.param);
-//     if (stmts && stmts.length > 0) {
-//       if (this.execute) {
-//         return this.execute(stmts);
-//       } else {
-//         return execBatch(this.pool, stmts);
-//       }
-//     } else {
-//       return Promise.resolve(0);
-//     }
-//   }
-// }
-
-// export interface AnyMap {
-//   [key: string]: any;
-// }
-// // tslint:disable-next-line:max-classes-per-file
-// export class MySQLChecker {
-//   constructor(private pool: Pool, private service?: string, private timeout?: number) {
-//     if (!this.timeout) {
-//       this.timeout = 4200;
-//     }
-//     if (!this.service) {
-//       this.service = 'mysql';
-//     }
-//     this.check = this.check.bind(this);
-//     this.name = this.name.bind(this);
-//     this.build = this.build.bind(this);
-//   }
-//   async check(): Promise<AnyMap> {
-//     const obj = {} as AnyMap;
-//     const promise = new Promise<any>((resolve, reject) => {
-//       this.pool.query('select current_time', (err, result) => {
-//         if (err) {
-//           return reject(err);
-//         } else {
-//           resolve(obj);
-//         }
-//       });
-//     });
-//     if (this.timeout > 0) {
-//       return promiseTimeOut(this.timeout, promise);
-//     } else {
-//       return promise;
-//     }
-//   }
-//   name(): string {
-//     return this.service;
-//   }
-//   build(data: AnyMap, err: any): AnyMap {
-//     if (err) {
-//       if (!data) {
-//         data = {} as AnyMap;
-//       }
-//       data['error'] = err;
-//     }
-//     return data;
-//   }
-// }
-
-// function promiseTimeOut(timeoutInMilliseconds: number, promise: Promise<any>): Promise<any> {
-//   return Promise.race([
-//     promise,
-//     new Promise((resolve, reject) => {
-//       setTimeout(() => {
-//         reject(`Timed out in: ${timeoutInMilliseconds} milliseconds!`);
-//       }, timeoutInMilliseconds);
-//     })
-//   ]);
-// }
+// tslint:disable-next-line:max-classes-per-file
+export class OracleBatchInserter<T> {
+  connection?: Connection;
+  version?: string;
+  exec?: (sql: string, args?: any[]) => Promise<number>;
+  map?: (v: T) => T;
+  param?: (i: number) => string;
+  constructor(conn: Connection|((sql: string, args?: any[]) => Promise<number>), public table: string, public attributes: Attributes, toDB?: (v: T) => T, public notSkipInvalid?: boolean, buildParam?: (i: number) => string) {
+    this.write = this.write.bind(this);
+    if (typeof conn === 'function') {
+      this.exec = conn;
+    } else {
+      this.connection = conn;
+    }
+    this.param = buildParam;
+    this.map = toDB;
+    const x = version(attributes);
+    if (x) {
+      this.version = x.name;
+    }
+  }
+  write(objs: T[]): Promise<number> {
+    if (!objs || objs.length === 0) {
+      return Promise.resolve(0);
+    }
+    let list = objs;
+    if (this.map) {
+      list = [];
+      for (const obj of objs) {
+        const obj2 = this.map(obj);
+        list.push(obj2);
+      }
+    }
+    const stmt = buildToInsertBatch(list, this.table, this.attributes, this.version, this.notSkipInvalid, this.param);
+    if (stmt) {
+      if (this.exec) {
+        return this.exec(stmt.query, stmt.params);
+      } else {
+        return exec(this.connection, stmt.query, stmt.params);
+      }
+    } else {
+      return Promise.resolve(0);
+    }
+  }
+}
+// tslint:disable-next-line:max-classes-per-file
+export class OracleWriter<T> {
+  connection?: Connection;
+  version?: string;
+  exec?: (sql: string, args?: any[]) => Promise<number>;
+  map?: (v: T) => T;
+  param?: (i: number) => string;
+  constructor(conn: Connection|((sql: string, args?: any[]) => Promise<number>), public table: string, public attributes: Attributes, toDB?: (v: T) => T, buildParam?: (i: number) => string) {
+    this.write = this.write.bind(this);
+    if (typeof conn === 'function') {
+      this.exec = conn;
+    } else {
+      this.connection = conn;
+    }
+    this.param = buildParam;
+    this.map = toDB;
+    const x = version(attributes);
+    if (x) {
+      this.version = x.name;
+    }
+  }
+  write(obj: T): Promise<number> {
+    if (!obj) {
+      return Promise.resolve(0);
+    }
+    let obj2 = obj;
+    if (this.map) {
+      obj2 = this.map(obj);
+    }
+    const stmt = buildToSave(obj2, this.table, this.attributes, this.version, this.param);
+    if (stmt) {
+      if (this.exec) {
+        return this.exec(stmt.query, stmt.params);
+      } else {
+        return exec(this.connection, stmt.query, stmt.params);
+      }
+    } else {
+      return Promise.resolve(0);
+    }
+  }
+}
+// tslint:disable-next-line:max-classes-per-file
+export class OracleBatchWriter<T> {
+  connection?: Connection;
+  version?: string;
+  execute?: (statements: Statement[]) => Promise<number>;
+  map?: (v: T) => T;
+  param?: (i: number) => string;
+  constructor(conn: Connection|((statements: Statement[]) => Promise<number>), public table: string, public attributes: Attributes, toDB?: (v: T) => T, buildParam?: (i: number) => string) {
+    this.write = this.write.bind(this);
+    if (typeof conn === 'function') {
+      this.execute = conn;
+    } else {
+      this.connection = conn;
+    }
+    this.param = buildParam;
+    this.map = toDB;
+    const x = version(attributes);
+    if (x) {
+      this.version = x.name;
+    }
+  }
+  write(objs: T[]): Promise<number> {
+    if (!objs || objs.length === 0) {
+      return Promise.resolve(0);
+    }
+    let list = objs;
+    if (this.map) {
+      list = [];
+      for (const obj of objs) {
+        const obj2 = this.map(obj);
+        list.push(obj2);
+      }
+    }
+    const stmts = buildToSaveBatch(list, this.table, this.attributes, this.version, this.param);
+    if (stmts && stmts.length > 0) {
+      if (this.execute) {
+        return this.execute(stmts);
+      } else {
+        return execBatch(this.connection, stmts);
+      }
+    } else {
+      return Promise.resolve(0);
+    }
+  }
+}

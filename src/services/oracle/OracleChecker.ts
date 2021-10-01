@@ -1,4 +1,4 @@
-import OracleDB, { Connection, Pool } from 'oracledb';
+import {Connection} from 'oracledb';
 
 export interface AnyMap {
   [key: string]: any;
