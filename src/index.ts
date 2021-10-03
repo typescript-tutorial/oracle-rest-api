@@ -16,7 +16,7 @@ const mongoDB = process.env.MONGO_DB;
 
 export const cfPool={
   user: 'c##vinasupport',
-  password: 'vinasupport',
+  password: '123456',
   connectString: '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(Host=localhost)(Port=1521))(CONNECT_DATA=(SID=ORCL)))',
   poolMin: 10,
   poolMax: 10,
