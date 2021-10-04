@@ -78,6 +78,7 @@ export async function execBatch(conn: Connection, statements: Statement[], first
     }
   } catch (e) {
     await conn.rollback();
+    console.log(e);
     throw e;
   }
   finally {

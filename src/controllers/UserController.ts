@@ -6,9 +6,10 @@ export class UserController {
     this.all = this.all.bind(this);
     this.load = this.load.bind(this);
     this.insert = this.insert.bind(this);
+    this.insertBatch = this.insertBatch.bind(this);
     this.update = this.update.bind(this);
     this.delete = this.delete.bind(this);
-    this.insertMany = this.insertMany.bind(this);
+    this.transection = this.transection.bind(this);
   }
 
   all(req: Request, res: Response) {
@@ -37,9 +38,9 @@ export class UserController {
       .then(result => res.status(200).json(result))
       .catch(err => res.status(500).send(err));
   }
-  insertMany(req: Request, res: Response) {
-    const user = req.body;
-    this.userService.transaction(user)
+  insertBatch(req: Request, res: Response) {
+    const users = req.body;
+    this.userService.insertBatch(users)
       .then(result => res.status(200).json(result))
       .catch(err => res.status(500).send(err));
   }
@@ -64,6 +65,12 @@ export class UserController {
       return res.status(400).send('id cannot be empty');
     }
     this.userService.delete(id)
+      .then(result => res.status(200).json(result))
+      .catch(err => res.status(500).send(err));
+  }
+  transection(req: Request, res: Response) {
+    const users = req.body;
+    this.userService.transaction(users)
       .then(result => res.status(200).json(result))
       .catch(err => res.status(500).send(err));
   }

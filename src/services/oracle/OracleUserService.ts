@@ -1,8 +1,10 @@
 import {Connection} from 'oracledb';
 import {User} from '../../models/User';
+import { buildToInsertBatch, buildToSave, buildToSaveBatch } from './build';
 import {StringMap} from './metadata';
 import {exec, execBatch, query, queryOne } from './oracle';
-
+import {Model} from './metadata';
+ 
 export const dateMap: StringMap = {
   ID: 'id',
   USERNAME: 'username',
@@ -21,16 +23,16 @@ export class SqlUserService {
   }
   insert(user: User): Promise<number> {
     user.dateOfBirth = new Date(user.dateOfBirth);
-    const str = `
-        MERGE INTO users USING dual ON ( id = :0 )
-        WHEN MATCHED THEN UPDATE SET username = :1, email = :2, phone = :3, dateofbirth = :4
-        WHEN NOT MATCHED THEN INSERT
-            VALUES (:0, :1, :2, :3, :4)
-    `;
-    // const str = `INSERT INTO users (id, username, email, phone, dateofbirth) VALUES (:0, :1, :2, :3, :4) ON DUPLICATE KEY UPDATE username = VALUES(:1), email = VALUES(:2), phone = VALUES(:3), dateofbirth = VALUES(:4) WHERE id = :0;`
-    return exec(this.conn, str,
-     [user.id, user.username, user.email, user.phone, user.dateOfBirth]);
+    const stm = buildToSave<User>( user, "users", userModel.attributes)
+    return exec(this.conn, stm.query, stm.params);
   }
+  insertBatch(users: User[]): Promise<number> {
+    users.forEach(item => {
+      item.dateOfBirth = new Date(item.dateOfBirth);
+    });
+    const stm = buildToInsertBatch<User>(users, 'users', userModel.attributes)
+    return exec(this.conn, stm.query, stm.params)
+  };
   update(user: User): Promise<number> {
     if (user.dateOfBirth) {
       user.dateOfBirth = new Date(user.dateOfBirth);
@@ -45,9 +47,44 @@ export class SqlUserService {
     users.forEach(item => {
       item.dateOfBirth = new Date(item.dateOfBirth);
     });
-    const statements = users.map((item) => {
-      return { query: `INSERT INTO users (id, username, email, phone, dateofbirth) VALUES (:0, :1, :2, :3, :4)`, params: [item.id, item.username, item.email, item.phone, item.dateOfBirth] };
-    });
-    return execBatch(this.conn, statements, true);
+    const statements = buildToSaveBatch<User>(users, 'users', userModel.attributes);
+    return execBatch(this.conn, statements, false);
   }
 }
+
+export const userModel: Model = {
+  name: 'user',
+  attributes: {
+    id: {
+      key: true,
+      match: 'equal'
+    },
+    username: {
+      match: 'contain'
+    },
+    email: {
+      format: 'email',
+      required: true
+    },
+    phone: {
+      format: 'phone',
+      required: true
+    },
+    dateOfBirth: {
+      type: 'datetime',
+      field: 'dateofbirth'
+    },
+    // interests:{
+    //   match: 'contain'
+    // },
+    // skills:{
+    //   match: 'contain'
+    // },
+    // achievements:{
+    //   match: 'contain'
+    // },
+    // settings:{
+    //   match: 'contain'
+    // }
+  }
+};

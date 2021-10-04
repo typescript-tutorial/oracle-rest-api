@@ -134,7 +134,7 @@ export function buildToInsertBatch<T>(objs: T[], table: string, attrs: Attribute
   if (rows.length === 0) {
     return null;
   }
-  const query = `insert all (${rows.join(' ')} select * from dual`;
+  const query = `insert all ${rows.join(' ')} select * from dual`;
   return { query, params: args };
 }
 export function buildToSave<T>(obj: T, table: string, attrs: Attributes, ver?: string, buildParam?: (i: number) => string, pks?: Attribute[], i?: number): Statement {
