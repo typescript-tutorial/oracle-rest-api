@@ -1,5 +1,5 @@
-import {Request, Response} from 'express';
-import {UserService} from '../services/UserService';
+import { Request, Response } from 'express';
+import { UserService } from '../services/UserService';
 
 export class UserController {
   constructor(private userService: UserService) {
@@ -44,7 +44,7 @@ export class UserController {
       .then(result => res.status(200).json(result))
       .catch(err => res.status(500).send(err));
   }
-  update(req: Request, res: Response) {    
+  update(req: Request, res: Response) {
     const id = req.params['id'];
     if (!id || id.length === 0) {
       return res.status(400).send('id cannot be empty');

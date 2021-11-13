@@ -1,10 +1,10 @@
-import {Connection} from 'oracledb';
-import {User} from '../../models/User';
+import { Connection } from 'oracledb';
+import { User } from '../../models/User';
 import { buildToInsertBatch, buildToSave, buildToSaveBatch } from './build';
-import {StringMap} from './metadata';
-import {exec, execBatch, query, queryOne } from './oracle';
-import {Model} from './metadata';
- 
+import { StringMap } from './metadata';
+import { Model } from './metadata';
+import { exec, execBatch, query, queryOne } from './oracle';
+
 export const dateMap: StringMap = {
   ID: 'id',
   USERNAME: 'username',
@@ -18,34 +18,46 @@ export class SqlUserService {
   all(): Promise<User[]> {
     return query<User>(this.conn, 'SELECT * FROM users ORDER BY id ASC', undefined, dateMap);
   }
-  load(id: string): Promise<User> {
+  load(id: string): Promise<User|null> {
     return queryOne(this.conn, 'SELECT * FROM users WHERE id = :0', [id], dateMap);
   }
   insert(user: User): Promise<number> {
-    user.dateOfBirth = new Date(user.dateOfBirth);
-    const stm = buildToSave<User>( user, "users", userModel.attributes)
+    if (user.dateOfBirth) {
+      user.dateOfBirth = new Date(user.dateOfBirth);
+    }
+    const stm = buildToSave<User>(user, 'users', userModel.attributes);
+    if (!stm) {
+      return Promise.resolve(-1);
+    }
     return exec(this.conn, stm.query, stm.params);
   }
   insertBatch(users: User[]): Promise<number> {
     users.forEach(item => {
-      item.dateOfBirth = new Date(item.dateOfBirth);
+      if (item.dateOfBirth) {
+        item.dateOfBirth = new Date(item.dateOfBirth);
+      }
     });
-    const stm = buildToInsertBatch<User>(users, 'users', userModel.attributes)
-    return exec(this.conn, stm.query, stm.params)
-  };
+    const stm = buildToInsertBatch<User>(users, 'users', userModel.attributes);
+    if (!stm) {
+      return Promise.resolve(-1);
+    }
+    return exec(this.conn, stm.query, stm.params);
+  }
   update(user: User): Promise<number> {
     if (user.dateOfBirth) {
       user.dateOfBirth = new Date(user.dateOfBirth);
     }
     return exec(this.conn, `UPDATE users SET username=:1, email =:2, phone=:3, dateofbirth=:4 WHERE id = :0`,
-    [ user.username, user.email, user.phone, user.dateOfBirth, user.id]);
+      [user.username, user.email, user.phone, user.dateOfBirth, user.id]);
   }
   delete(id: string): Promise<number> {
     return exec(this.conn, `DELETE FROM users WHERE id = :0`, [id]);
   }
   transaction(users: User[]): Promise<number> {
     users.forEach(item => {
-      item.dateOfBirth = new Date(item.dateOfBirth);
+      if (item.dateOfBirth) {
+        item.dateOfBirth = new Date(item.dateOfBirth);
+      }
     });
     const statements = buildToSaveBatch<User>(users, 'users', userModel.attributes);
     return execBatch(this.conn, statements, false);

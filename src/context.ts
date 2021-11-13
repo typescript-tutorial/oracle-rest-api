@@ -1,7 +1,7 @@
 import { HealthController } from 'services/oracle/HealthController';
-import {UserController} from './controllers/UserController';
+import { UserController } from './controllers/UserController';
 
 export interface ApplicationContext {
-  userController: UserController;
-  healthController: HealthController;
+  user: UserController;
+  health: HealthController;
 }

@@ -1,5 +1,5 @@
-import {Request, Response} from 'express';
-import {check, HealthChecker} from './health';
+import { Request, Response } from 'express';
+import { check, HealthChecker } from './health';
 
 export class HealthController {
   constructor(protected checkers: HealthChecker[]) {

@@ -1,6 +1,6 @@
-import {Request, Response} from 'express';
+import { Request, Response } from 'express';
+import { check } from '../services/oracle/health';
 import { HealthChecker } from '../services/oracle/OracleChecker';
-import {check} from '../services/oracle/health';
 // check health
 export class HealthController {
   constructor(protected checkers: HealthChecker[]) {

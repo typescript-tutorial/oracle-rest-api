@@ -1,4 +1,4 @@
-import {Connection} from 'oracledb';
+import { Connection } from 'oracledb';
 
 export interface AnyMap {
   [key: string]: any;
@@ -10,13 +10,11 @@ export interface HealthChecker {
 }
 
 export class OracleChecker implements HealthChecker {
-  constructor(private client: Connection, private service?: string, private timeout?: number) {
-    if (!this.timeout) {
-      this.timeout = 4200;
-    }
-    if (!this.service) {
-      this.service = 'Oracle';
-    }
+  timeout: number;
+  service: string;
+  constructor(private client: Connection, service?: string, timeout?: number) {
+    this.timeout = (timeout ? timeout : 4200);
+    this.service = (service ? service : 'oracle');
     this.check = this.check.bind(this);
     this.name = this.name.bind(this);
     this.build = this.build.bind(this);

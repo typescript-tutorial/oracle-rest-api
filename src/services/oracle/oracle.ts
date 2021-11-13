@@ -1,4 +1,4 @@
-import OracleDB, { Connection } from 'oracledb';
+import OracleDB, { Connection, Metadata } from 'oracledb';
 import { buildToInsertBatch, buildToSave, buildToSaveBatch } from './build';
 import { Attribute, Attributes, Manager, Statement, StringMap } from './metadata';
 
@@ -30,7 +30,7 @@ export class OracleManager implements Manager {
     const p = (ctx ? ctx : this.conn);
     return query(p, sql, args, m, bools);
   }
-  queryOne<T>(sql: string, args?: any[], m?: StringMap, bools?: Attribute[], ctx?: any): Promise<T> {
+  queryOne<T>(sql: string, args?: any[], m?: StringMap, bools?: Attribute[], ctx?: any): Promise<T|null> {
     const p = (ctx ? ctx : this.conn);
     return queryOne(p, sql, args, m, bools);
   }
@@ -53,25 +53,34 @@ export async function execBatch(conn: Connection, statements: Statement[], first
   let c = 0;
   try {
     if (firstSuccess) {
-      const result0  = await conn.execute(statements[0].query, statements[0].params, {autoCommit: false});
-      if (result0 && result0.rowsAffected !== 0) {
+      const result0 = await conn.execute(statements[0].query, statements[0].params as any, { autoCommit: false });
+      if (result0 && result0.rowsAffected && result0.rowsAffected > 0) {
         const subs = statements.slice(1);
         const arrPromise = subs.map((item) => {
-          return conn.execute(item.query, item.params ? item.params : [], {autoCommit: false});
+          return conn.execute(item.query, item.params ? item.params : [], { autoCommit: false });
         });
         const results = await Promise.all(arrPromise);
         for (const obj of results) {
-          c += obj.rowsAffected;
+          if (obj.rowsAffected) {
+            c += obj.rowsAffected;
+          }
         }
-        c += result0.rowsAffected;
+        if (result0.rowsAffected) {
+          c += result0.rowsAffected;
+        }
+        await conn.commit();
+        return c;
+      } else {
         await conn.commit();
         return c;
       }
     } else {
-      const arrPromise = statements.map((item) => conn.execute(item.query, item.params ? item.params : [], {autoCommit: false}));
+      const arrPromise = statements.map((item) => conn.execute(item.query, item.params ? item.params : [], { autoCommit: false }));
       const results = await Promise.all(arrPromise);
       for (const obj of results) {
-        c += obj.rowsAffected;
+        if (obj.rowsAffected) {
+          c += obj.rowsAffected;
+        }
       }
       await conn.commit();
       return c;
@@ -94,7 +103,11 @@ export function exec(conn: Connection, sql: string, args?: any[]): Promise<numbe
         console.log(err);
         return reject(err);
       } else {
-        return resolve(results.rowsAffected);
+        if (results.rowsAffected) {
+          return resolve(results.rowsAffected);
+        } else {
+          return resolve(-1);
+        }
       }
     });
   });
@@ -103,20 +116,29 @@ export function exec(conn: Connection, sql: string, args?: any[]): Promise<numbe
 export function query<T>(conn: Connection, sql: string, args?: any[], m?: StringMap, bools?: Attribute[]): Promise<T[]> {
   const p = toArray(args);
   return new Promise<T[]>((resolve, reject) => {
-    return conn.execute<T>(sql, p , (err, results) => {
+    return conn.execute<T>(sql, p, (err, results) => {
       if (err) {
         return reject(err);
       } else {
-        const arrayResult = results.rows.map(item => {
-          return formatData<T>(results.metaData, item);
-        });
-        return resolve(handleResults(arrayResult, m, bools));
+        if (results.rows) {
+          const x = results.metaData;
+          if (!x) {
+            return resolve(results.rows);
+          } else {
+            const arrayResult = results.rows.map(item => {
+              return formatData<T>(x, item);
+            });
+            return resolve(handleResults(arrayResult, m, bools));
+          }
+        } else {
+          return resolve([]);
+        }
       }
     });
   });
 }
 
-export function queryOne<T>(conn: Connection, sql: string, args?: any[], m?: StringMap, bools?: Attribute[]): Promise<T> {
+export function queryOne<T>(conn: Connection, sql: string, args?: any[], m?: StringMap, bools?: Attribute[]): Promise<T|null> {
   return query<T>(conn, sql, args, m, bools).then(r => {
     return (r && r.length > 0 ? r[0] : null);
   });
@@ -128,7 +150,7 @@ export function execScalar<T>(conn: Connection, sql: string, args?: any[]): Prom
       return null;
     } else {
       const keys = Object.keys(r);
-      return r[keys[0]];
+      return (r as any)[keys[0]];
     }
   });
 }
@@ -136,16 +158,22 @@ export function execScalar<T>(conn: Connection, sql: string, args?: any[]): Prom
 export function count(conn: Connection, sql: string, args?: any[]): Promise<number> {
   return execScalar<number>(conn, sql, args);
 }
-export function insertBatch<T>(conn: Connection|((sql: string, args?: any[]) => Promise<number>), objs: T[], table: string, attrs: Attributes, ver?: string, notSkipInvalid?: boolean, buildParam?: (i: number) => string): Promise<number> {
+export function insertBatch<T>(conn: Connection | ((sql: string, args?: any[]) => Promise<number>), objs: T[], table: string, attrs: Attributes, ver?: string, notSkipInvalid?: boolean, buildParam?: (i: number) => string): Promise<number> {
   const s = buildToInsertBatch<T>(objs, table, attrs, ver, notSkipInvalid, buildParam);
+  if (!s) {
+    return Promise.resolve(-1);
+  }
   if (typeof conn === 'function') {
     return conn(s.query, s.params);
   } else {
     return exec(conn, s.query, s.params);
   }
 }
-export function save<T>(conn: Connection|((sql: string, args?: any[]) => Promise<number>), obj: T, table: string, attrs: Attributes, ver?: string, buildParam?: (i: number) => string, i?: number): Promise<number> {
+export function save<T>(conn: Connection | ((sql: string, args?: any[]) => Promise<number>), obj: T, table: string, attrs: Attributes, ver?: string, buildParam?: (i: number) => string, i?: number): Promise<number> {
   const s = buildToSave(obj, table, attrs, ver, buildParam);
+  if (!s) {
+    return Promise.resolve(-1);
+  }
   if (typeof conn === 'function') {
     return conn(s.query, s.params);
   } else {
@@ -153,7 +181,7 @@ export function save<T>(conn: Connection|((sql: string, args?: any[]) => Promise
   }
 }
 
-export function saveBatch<T>(conn: Connection|((statements: Statement[]) => Promise<number>), objs: T[], table: string, attrs: Attributes, ver?: string, buildParam?: (i: number) => string): Promise<number> {
+export function saveBatch<T>(conn: Connection | ((statements: Statement[]) => Promise<number>), objs: T[], table: string, attrs: Attributes, ver?: string, buildParam?: (i: number) => string): Promise<number> {
   const s = buildToSaveBatch(objs, table, attrs, ver, buildParam);
   if (typeof conn === 'function') {
     return conn(s);
@@ -162,7 +190,7 @@ export function saveBatch<T>(conn: Connection|((statements: Statement[]) => Prom
   }
 }
 
-export function toArray(arr: any[]): any[] {
+export function toArray(arr?: any[]): any[] {
   if (!arr || arr.length === 0) {
     return [];
   }
@@ -211,16 +239,19 @@ export function handleBool<T>(objs: T[], bools: Attribute[]) {
     return objs;
   }
   for (const obj of objs) {
+    const o: any = obj;
     for (const field of bools) {
-      const v = obj[field.name];
-      if (typeof v !== 'boolean' && v != null && v !== undefined) {
-        const b = field.true;
-        if (b == null || b === undefined) {
-          // tslint:disable-next-line:triple-equals
-          obj[field.name] = ('1' == v || 'T' == v || 'Y' == v || 'true' == v);
-        } else {
-          // tslint:disable-next-line:triple-equals
-          obj[field.name] = (v == b ? true : false);
+      if (field.name) {
+        const v = o[field.name];
+        if (typeof v !== 'boolean' && v != null && v !== undefined) {
+          const b = field.true;
+          if (b == null || b === undefined) {
+            // tslint:disable-next-line:triple-equals
+            o[field.name] = ('1' == v || 'T' == v || 'Y' == v || 'true' == v);
+          } else {
+            // tslint:disable-next-line:triple-equals
+            o[field.name] = (v == b ? true : false);
+          }
         }
       }
     }
@@ -242,7 +273,7 @@ export function map<T>(obj: T, m?: StringMap): any {
     if (!k0) {
       k0 = key;
     }
-    obj2[k0] = obj[key];
+    obj2[k0] = (obj as any)[key];
   }
   return obj2;
 }
@@ -271,7 +302,7 @@ export function mapArray<T>(results: T[], m?: StringMap): T[] {
   }
   return objs;
 }
-export function getFields(fields: string[], all?: string[]): string[] {
+export function getFields(fields: string[], all?: string[]): string[]|undefined {
   if (!fields || fields.length === 0) {
     return undefined;
   }
@@ -317,7 +348,7 @@ export function isEmpty(s: string): boolean {
 }
 
 // format the return data
-export function formatData<T>(nameColumn: any, data: any, m?: StringMap): T {
+export function formatData<T>(nameColumn: Metadata<T>[], data: any, m?: StringMap): T {
   const result: any = {};
   nameColumn.forEach((item, index) => {
     let key = item.name;
@@ -329,7 +360,7 @@ export function formatData<T>(nameColumn: any, data: any, m?: StringMap): T {
   return result;
 }
 
-export function version(attrs: Attributes): Attribute {
+export function version(attrs: Attributes): Attribute|undefined {
   const ks = Object.keys(attrs);
   for (const k of ks) {
     const attr = attrs[k];
@@ -347,7 +378,7 @@ export class OracleBatchInserter<T> {
   exec?: (sql: string, args?: any[]) => Promise<number>;
   map?: (v: T) => T;
   param?: (i: number) => string;
-  constructor(conn: Connection|((sql: string, args?: any[]) => Promise<number>), public table: string, public attributes: Attributes, toDB?: (v: T) => T, public notSkipInvalid?: boolean, buildParam?: (i: number) => string) {
+  constructor(conn: Connection | ((sql: string, args?: any[]) => Promise<number>), public table: string, public attributes: Attributes, toDB?: (v: T) => T, public notSkipInvalid?: boolean, buildParam?: (i: number) => string) {
     this.write = this.write.bind(this);
     if (typeof conn === 'function') {
       this.exec = conn;
@@ -378,7 +409,7 @@ export class OracleBatchInserter<T> {
       if (this.exec) {
         return this.exec(stmt.query, stmt.params);
       } else {
-        return exec(this.connection, stmt.query, stmt.params);
+        return exec(this.connection as any, stmt.query, stmt.params);
       }
     } else {
       return Promise.resolve(0);
@@ -392,7 +423,7 @@ export class OracleWriter<T> {
   exec?: (sql: string, args?: any[]) => Promise<number>;
   map?: (v: T) => T;
   param?: (i: number) => string;
-  constructor(conn: Connection|((sql: string, args?: any[]) => Promise<number>), public table: string, public attributes: Attributes, toDB?: (v: T) => T, buildParam?: (i: number) => string) {
+  constructor(conn: Connection | ((sql: string, args?: any[]) => Promise<number>), public table: string, public attributes: Attributes, toDB?: (v: T) => T, buildParam?: (i: number) => string) {
     this.write = this.write.bind(this);
     if (typeof conn === 'function') {
       this.exec = conn;
@@ -419,7 +450,7 @@ export class OracleWriter<T> {
       if (this.exec) {
         return this.exec(stmt.query, stmt.params);
       } else {
-        return exec(this.connection, stmt.query, stmt.params);
+        return exec(this.connection as any, stmt.query, stmt.params);
       }
     } else {
       return Promise.resolve(0);
@@ -433,7 +464,7 @@ export class OracleBatchWriter<T> {
   execute?: (statements: Statement[]) => Promise<number>;
   map?: (v: T) => T;
   param?: (i: number) => string;
-  constructor(conn: Connection|((statements: Statement[]) => Promise<number>), public table: string, public attributes: Attributes, toDB?: (v: T) => T, buildParam?: (i: number) => string) {
+  constructor(conn: Connection | ((statements: Statement[]) => Promise<number>), public table: string, public attributes: Attributes, toDB?: (v: T) => T, buildParam?: (i: number) => string) {
     this.write = this.write.bind(this);
     if (typeof conn === 'function') {
       this.execute = conn;
@@ -464,7 +495,7 @@ export class OracleBatchWriter<T> {
       if (this.execute) {
         return this.execute(stmts);
       } else {
-        return execBatch(this.connection, stmts);
+        return execBatch(this.connection as any, stmts);
       }
     } else {
       return Promise.resolve(0);

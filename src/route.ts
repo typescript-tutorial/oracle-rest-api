@@ -1,9 +1,9 @@
-import {Application} from 'express';
-import {ApplicationContext} from './context';
+import { Application } from 'express';
+import { ApplicationContext } from './context';
 
 export function route(app: Application, ctx: ApplicationContext): void {
-  const user = ctx.userController;
-  const health = ctx.healthController;
+  const user = ctx.user;
+  const health = ctx.health;
 
   app.get('/health', health.check);
 
